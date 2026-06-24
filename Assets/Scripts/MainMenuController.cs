@@ -39,11 +39,11 @@ public class MainMenuController : MonoBehaviour
         // ── Title ─────────────────────────────────────────────────────────────
         var titleGo = Rect("Title", c.transform,
             new Vector2(0.5f, 0.72f), new Vector2(0.5f, 0.72f),
-            Vector2.zero, new Vector2(900f, 130f));
+            Vector2.zero, new Vector2(1300f, 130f));
         var titleTxt = titleGo.AddComponent<Text>();
-        titleTxt.text       = "HAPPY WHEELS";
+        titleTxt.text       = "HAPPY WHEELS HILL CLIMB";
         titleTxt.font       = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        titleTxt.fontSize   = 88;
+        titleTxt.fontSize   = 72;
         titleTxt.fontStyle  = FontStyle.Bold;
         titleTxt.color      = new Color(1f, 0.85f, 0.08f);
         titleTxt.alignment  = TextAnchor.MiddleCenter;

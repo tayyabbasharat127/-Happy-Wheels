@@ -1,26 +1,36 @@
-STEVESMODS: <br>
-Unity 2018 2D Happy Wheels Hill Climb Clone <br>
+# Happy Wheels Hill Climb
 
-I used a cool existing online project to start my Happy Wheels experiments with. <br>
-Original Authors example:<br>
---- Make your own HILL CLIMB RACING ---- <br>
-https://www.youtube.com/watch?v=DgG9us3QkTE <br>
-NOTE: You will need to watch this video, download the project and get it running before copying over my changes <br>
+A 2D Unity driving game where you push a fragile car across rough terrain, manage fuel, and try to survive four distance-based levels.
 
----My Changes: <br>
-<p>
-This was a great example to start off with, alot of knowledge was baked into the demo, but it had flaws I wanted to correct. 
-  
-  1. I re-aranged the car parts to give better car physics
-  2. I added game objects to re-start the game if the driver dies (falls on head)
-  3. I added colliders and hinges to the drivers head in order to get the "bobble head effect" 
-  4. Added colliders / bumpers with physics materials so the car would not get stuck in strange positions
-  5. Added "thruster" with partical effect to get "airborn"
-  6. Added longer course by copy/flipping existing terrain.
-  
-The game is actually playable now and a good start for the next person to take and run with
+## How the Game Works
 
-Thanks to the original author for sharing
+Press **Play**, enter your player name, and start driving. The goal is to move as far to the right as possible without flipping the car or letting the driver's head hit the ground.
 
-Enjoy
-</p>
+The car accelerates with the **Right Arrow** key. Holding the key spins the wheels, builds forward thrust, and consumes fuel. Fuel cans on the course help you keep going.
+
+Your score increases as the car moves forward. Each level is completed when you reach **1000 m**. After completing a level, the game pauses and lets you continue to the next one.
+
+## Controls
+
+- **Right Arrow**: Accelerate and thrust forward
+- **Play / Next Level**: Start the run or continue after a completed level
+- **Try Again**: Restart the current level after a crash
+- **Main Menu**: Return to the menu and reset run progress
+
+## Rules
+
+- Reach **1000 m** to clear a level.
+- Clear **4 levels** to win the game.
+- If the car stays flipped over too long, the run ends.
+- If the driver's head touches the ground, the run ends.
+- Running out of momentum or fuel makes it harder to reach the goal, so collect fuel cans whenever possible.
+
+## Project
+
+Built with Unity as a small 2D physics driving game. The main project files live in:
+
+- `Assets/`
+- `Packages/`
+- `ProjectSettings/`
+
+Unity-generated cache folders such as `Library/`, `Temp/`, `Logs/`, and `UserSettings/` are intentionally ignored.
