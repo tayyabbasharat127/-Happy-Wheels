@@ -13,6 +13,7 @@ Your score increases as the car moves forward. Each level is completed when you 
 ## Controls
 
 - **Right Arrow**: Accelerate and thrust forward
+- **P / Esc**: Pause or resume the game
 - **Play / Next Level**: Start the run or continue after a completed level
 - **Try Again**: Restart the current level after a crash
 - **Main Menu**: Return to the menu and reset run progress

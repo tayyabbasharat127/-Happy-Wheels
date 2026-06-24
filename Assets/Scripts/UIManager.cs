@@ -10,6 +10,9 @@ public class UIManager : MonoBehaviour
     private Text levelTitle;
     private Text levelSummary;
     private Text levelButtonText;
+    private GameObject pauseButton;
+    private Text pauseButtonText;
+    private GameObject pausePanel;
     private GameObject gameOverPanel;
     private GameObject winPanel;
 
@@ -27,6 +30,8 @@ public class UIManager : MonoBehaviour
 
         BuildScoreLabel(canvas);
         BuildPlayerSidebar(canvas);
+        BuildPauseButton(canvas);
+        BuildPausePanel(canvas);
         BuildLevelPanel(canvas);
         BuildGameOverPanel(canvas);
         BuildWinPanel(canvas);
@@ -37,6 +42,7 @@ public class UIManager : MonoBehaviour
         if (GameStateManager.Instance != null)
         {
             GameStateManager.Instance.OnLevelComplete += ShowLevelComplete;
+            GameStateManager.Instance.OnPauseChanged += ShowPauseChanged;
             GameStateManager.Instance.OnGameOver += ShowGameOver;
             GameStateManager.Instance.OnWin += ShowWin;
         }
@@ -47,6 +53,7 @@ public class UIManager : MonoBehaviour
         if (GameStateManager.Instance != null)
         {
             GameStateManager.Instance.OnLevelComplete -= ShowLevelComplete;
+            GameStateManager.Instance.OnPauseChanged -= ShowPauseChanged;
             GameStateManager.Instance.OnGameOver -= ShowGameOver;
             GameStateManager.Instance.OnWin -= ShowWin;
         }
@@ -66,6 +73,8 @@ public class UIManager : MonoBehaviour
 
         if (GameStateManager.Instance.IsLevelPaused && shownLevelComplete != GameStateManager.Instance.CurrentLevel)
             ShowLevelComplete(GameStateManager.Instance.CurrentLevel);
+
+        UpdatePauseButton();
 
         if (scoreText == null || GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin) return;
 
@@ -107,6 +116,52 @@ public class UIManager : MonoBehaviour
         levelStatusText = AddLabel(panel, "LEVEL 1", 18, new Color(0.65f, 0.95f, 1f), new Vector2(0f, -30f), new Vector2(210f, 26f));
     }
 
+    void BuildPauseButton(Canvas c)
+    {
+        pauseButton = MakeRect("PauseBtn", c.transform,
+            new Vector2(1f, 1f), new Vector2(1f, 1f),
+            new Vector2(-78f, -54f), new Vector2(112f, 56f));
+        pauseButton.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        var btn = pauseButton.AddComponent<Button>();
+        btn.targetGraphic = pauseButton.GetComponent<Image>();
+        btn.onClick.AddListener(() => GameStateManager.Instance?.TogglePause());
+        var nav = btn.navigation;
+        nav.mode = Navigation.Mode.None;
+        btn.navigation = nav;
+        pauseButtonText = AddLabel(pauseButton, "PAUSE", 22, Color.white, Vector2.zero, new Vector2(112f, 56f));
+        pauseButton.SetActive(false);
+    }
+
+    void BuildPausePanel(Canvas c)
+    {
+        pausePanel = MakeRect("PausePanel", c.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        pausePanel.AddComponent<Image>().color = PanelBg;
+        AddLabel(pausePanel, "PAUSED", 64, new Color(1f, 0.85f, 0.1f), new Vector2(0f, 92f), new Vector2(760f, 90f));
+        AddLabel(pausePanel, "Press P or Esc to resume", 26, Color.white, new Vector2(0f, 28f), new Vector2(680f, 48f));
+        AddActionButton(pausePanel, "ResumeBtn", "RESUME", new Color(0.1f, 0.65f, 0.18f), new Vector2(0f, -54f), new Vector2(240f, 62f), () => GameStateManager.Instance?.ResumeGame());
+        AddActionButton(pausePanel, "MenuBtn", "MAIN MENU", new Color(0.22f, 0.22f, 0.55f), new Vector2(0f, -134f), new Vector2(240f, 62f), () => GameStateManager.Instance?.GoToMainMenu());
+        pausePanel.SetActive(false);
+    }
+
+    void UpdatePauseButton()
+    {
+        if (pauseButton == null || GameStateManager.Instance == null) return;
+        bool canShow = !PlayerNameInput.IsOpen &&
+            !GameStateManager.Instance.IsGameOver &&
+            !GameStateManager.Instance.IsWin &&
+            !GameStateManager.Instance.IsLevelPaused;
+        pauseButton.SetActive(canShow);
+        if (pauseButtonText != null)
+            pauseButtonText.text = GameStateManager.Instance.IsPaused ? "RESUME" : "PAUSE";
+    }
+
+    void ShowPauseChanged(bool paused)
+    {
+        if (pausePanel != null)
+            pausePanel.SetActive(paused);
+        UpdatePauseButton();
+    }
+
     void BuildLevelPanel(Canvas c)
     {
         levelPanel = MakeRect("LevelCompletePanel", c.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
@@ -122,6 +177,7 @@ public class UIManager : MonoBehaviour
     void ShowLevelComplete(int level)
     {
         if (levelPanel == null || level <= 0) return;
+        if (pausePanel != null) pausePanel.SetActive(false);
         shownLevelComplete = level;
         levelTitle.text = "LEVEL " + level + " COMPLETE";
         if (GameStateManager.Instance != null)
@@ -153,6 +209,7 @@ public class UIManager : MonoBehaviour
     void ShowGameOver()
     {
         if (gameOverPanel == null) return;
+        if (pausePanel != null) pausePanel.SetActive(false);
         gameOverPanel.SetActive(true);
         var summary = gameOverPanel.transform.Find("GOSummary")?.GetComponent<Text>();
         if (summary != null && GameStateManager.Instance != null)
@@ -176,6 +233,7 @@ public class UIManager : MonoBehaviour
     void ShowWin()
     {
         if (winPanel == null) return;
+        if (pausePanel != null) pausePanel.SetActive(false);
         winPanel.SetActive(true);
         var summary = winPanel.transform.Find("WinSummary")?.GetComponent<Text>();
         if (summary != null && GameStateManager.Instance != null)

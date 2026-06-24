@@ -43,7 +43,8 @@ public class CarController : MonoBehaviour
     {
         if (PlayerNameInput.IsOpen ||
             (GameStateManager.Instance != null &&
-            (GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin || GameStateManager.Instance.IsLevelPaused)))
+            (GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin ||
+             GameStateManager.Instance.IsLevelPaused || GameStateManager.Instance.IsPaused)))
         {
             throttleHeld = false;
             movement = 0f;
@@ -66,7 +67,8 @@ public class CarController : MonoBehaviour
     {
         if (PlayerNameInput.IsOpen ||
             (GameStateManager.Instance != null &&
-            (GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin || GameStateManager.Instance.IsLevelPaused))) return;
+            (GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin ||
+             GameStateManager.Instance.IsLevelPaused || GameStateManager.Instance.IsPaused))) return;
 
         // Wheel torque — frame-rate independent
         tireTorque = -movement * speed * Time.fixedDeltaTime;

@@ -20,11 +20,13 @@ public class GameStateManager : MonoBehaviour
     public float CompletedTotalScore => sessionTotalScore;
     public int CurrentLevel { get; private set; }
     public bool IsLevelPaused { get; private set; }
+    public bool IsPaused { get; private set; }
     public bool IsGameOver { get; private set; }
     public bool IsWin { get; private set; }
 
     public event Action<float> OnScoreUpdated;
     public event Action<int> OnLevelComplete;
+    public event Action<bool> OnPauseChanged;
     public event Action OnGameOver;
     public event Action OnWin;
 
@@ -73,7 +75,10 @@ public class GameStateManager : MonoBehaviour
 
     void Update()
     {
-        if (IsGameOver || IsWin || IsLevelPaused || levelCompleted || carTransform == null) return;
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P))
+            TogglePause();
+
+        if (IsGameOver || IsWin || IsLevelPaused || IsPaused || levelCompleted || carTransform == null) return;
         UpdateScore();
         DetectFlip();
         CheckLevelProgress();
@@ -148,9 +153,34 @@ public class GameStateManager : MonoBehaviour
         SceneManager.LoadScene(1);
     }
 
+    public void TogglePause()
+    {
+        if (IsPaused) ResumeGame();
+        else PauseGame();
+    }
+
+    public void PauseGame()
+    {
+        if (PlayerNameInput.IsOpen || IsGameOver || IsWin || IsLevelPaused || levelCompleted || IsPaused) return;
+        IsPaused = true;
+        Time.timeScale = 0f;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.SetEngineThrottle(0f);
+        OnPauseChanged?.Invoke(true);
+    }
+
+    public void ResumeGame()
+    {
+        if (!IsPaused) return;
+        IsPaused = false;
+        Time.timeScale = 1f;
+        OnPauseChanged?.Invoke(false);
+    }
+
     public void TriggerGameOver()
     {
         if (IsGameOver || IsWin) return;
+        IsPaused = false;
         IsLevelPaused = false;
         Time.timeScale = 1f;
         IsGameOver = true;
@@ -165,6 +195,7 @@ public class GameStateManager : MonoBehaviour
     public void TriggerWin()
     {
         if (IsWin || IsGameOver) return;
+        IsPaused = false;
         IsLevelPaused = false;
         Time.timeScale = 1f;
         IsWin = true;
