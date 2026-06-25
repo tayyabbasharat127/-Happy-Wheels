@@ -13,7 +13,6 @@ public class CarController : MonoBehaviour
     public UnityEngine.UI.Image gasCanImage;
     public GameObject thrustingEffect;
 
-    // Nitro
     public int nitroCharges = 3;
     public const int MaxNitroCharges = 3;
 
@@ -30,18 +29,28 @@ public class CarController : MonoBehaviour
     private float nitroCooldown;
     private Vector2 backTireOffset;
     private Vector2 frontTireOffset;
+    private Collider2D backTireCollider;
+    private Collider2D frontTireCollider;
+    private readonly Collider2D[] groundHits = new Collider2D[8];
 
-    private const float StuckThreshold  = 1.8f;
-    private const float StuckSpeedSq    = 0.04f;
-    private const float ThrustAccel     = 38f;    // was 400 — too fast
-    private const float ThrustDecay     = 85f;    // was 600
-    private const float ThrustMax       = 55f;    // was 500 — caused launch behaviour
-    private const float BrakeForce      = 55f;    // was 300 — balanced against new ThrustMax
-    private const float MaxCarSpeed     = 14f;    // hard cap on forward velocity (m/s)
-    private const float FuelOutGrace    = 3f;
-    private const float NitroDuration   = 1.5f;
-    private const float NitroCooldown   = 2f;
-    private const float NitroMultiplier = 2.2f;   // was 3 — nitro still feels strong but not broken
+    private const float StuckThreshold = 1.2f;
+    private const float StuckSpeed = 0.4f;
+    private const float StuckAssistImpulse = 2.4f;
+    private const float WheelTorque = 34f;
+    private const float ReverseTorqueScale = 0.55f;
+    private const float AirControlScale = 0.35f;
+    private const float ThrustAccel = 75f;
+    private const float ThrustDecay = 120f;
+    private const float ThrustMax = 72f;
+    private const float BrakeForce = 85f;
+    private const float MaxForwardSpeed = 17f;
+    private const float MaxReverseSpeed = 7f;
+    private const float MaxNitroSpeed = 24f;
+    private const float MaxUpwardSpeed = 8.5f;
+    private const float FuelOutGrace = 3f;
+    private const float NitroDuration = 1.5f;
+    private const float NitroCooldown = 2f;
+    private const float NitroMultiplier = 1.75f;
 
     void Awake()
     {
@@ -54,27 +63,39 @@ public class CarController : MonoBehaviour
         backTire.WakeUp();
         frontTire.WakeUp();
 
-        // Store tire offsets for respawn repositioning
-        backTireOffset  = backTire.position  - carRigidbody.position;
+        backTireOffset = backTire.position - carRigidbody.position;
         frontTireOffset = frontTire.position - carRigidbody.position;
+        backTireCollider = backTire.GetComponent<Collider2D>();
+        frontTireCollider = frontTire.GetComponent<Collider2D>();
 
-        // Add linear damping if scene left it at 0 — prevents endless sliding
-        if (carRigidbody.linearDamping < 0.5f)
-            carRigidbody.linearDamping = 1.2f;
+        TuneBody(carRigidbody, 1.0f, 2.4f, 1.8f);
+        TuneBody(backTire, 0.45f, 0.25f, 1.6f);
+        TuneBody(frontTire, 0.45f, 0.25f, 1.6f);
 
-        // Fix oversized tires: if scene scale is too large, clamp it.
-        // Target: biggest localScale axis ≤ 1.4 (normal tire diameter for this camera scale).
-        ClampTireScale(backTire,  1.4f);
+        ClampTireScale(backTire, 1.4f);
         ClampTireScale(frontTire, 1.4f);
+    }
+
+    static void TuneBody(Rigidbody2D body, float minLinearDamping, float minAngularDamping, float minGravityScale)
+    {
+        if (body == null) return;
+
+        if (body.linearDamping < minLinearDamping)
+            body.linearDamping = minLinearDamping;
+        if (body.angularDamping < minAngularDamping)
+            body.angularDamping = minAngularDamping;
+        if (body.gravityScale < minGravityScale)
+            body.gravityScale = minGravityScale;
     }
 
     static void ClampTireScale(Rigidbody2D tire, float maxAxis)
     {
         if (tire == null) return;
-        Vector3 s    = tire.transform.localScale;
-        float biggest = Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y));
-        if (biggest > maxAxis * 1.1f) // only touch if meaningfully oversized
-            tire.transform.localScale = s * (maxAxis / biggest);
+
+        Vector3 scale = tire.transform.localScale;
+        float biggest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y));
+        if (biggest > maxAxis * 1.1f)
+            tire.transform.localScale = scale * (maxAxis / biggest);
     }
 
     void Update()
@@ -83,8 +104,8 @@ public class CarController : MonoBehaviour
         if (blocked)
         {
             throttleHeld = false;
-            brakeHeld    = false;
-            movement     = 0f;
+            brakeHeld = false;
+            movement = 0f;
             AudioManager.Instance?.SetEngineThrottle(0f);
             AudioManager.Instance?.SetLowFuelWarning(false);
             if (gasCanImage != null) gasCanImage.fillAmount = Mathf.Clamp01(fuel);
@@ -92,25 +113,21 @@ public class CarController : MonoBehaviour
         }
 
         throttleHeld = Input.GetKey(KeyCode.RightArrow);
-        brakeHeld    = Input.GetKey(KeyCode.LeftArrow);
-        movement     = throttleHeld ? 1f : (brakeHeld ? -0.3f : 0f);
+        brakeHeld = Input.GetKey(KeyCode.LeftArrow);
+        movement = throttleHeld ? 1f : (brakeHeld ? -0.3f : 0f);
 
-        // Nitro activation
         if (Input.GetKeyDown(KeyCode.Space) && nitroCharges > 0 && nitroCooldown <= 0f && !IsNitroActive)
             ActivateNitro();
 
-        if (nitroCooldown > 0f) nitroCooldown -= Time.deltaTime;
+        if (nitroCooldown > 0f)
+            nitroCooldown -= Time.deltaTime;
 
-        // Fuel UI
-        if (gasCanImage != null) gasCanImage.fillAmount = Mathf.Clamp01(fuel);
+        if (gasCanImage != null)
+            gasCanImage.fillAmount = Mathf.Clamp01(fuel);
 
-        // Low-fuel warning
-        if (AudioManager.Instance != null)
-            AudioManager.Instance.SetLowFuelWarning(fuel < 0.2f && !fuelOutStarted && !IsStateBlocking());
-
+        AudioManager.Instance?.SetLowFuelWarning(fuel < 0.2f && !fuelOutStarted && !IsStateBlocking());
         AudioManager.Instance?.SetEngineThrottle(throttleHeld ? 1f : 0f);
 
-        // Fuel-out grace countdown
         if (fuelOutStarted)
         {
             fuelOutTimer -= Time.deltaTime;
@@ -126,7 +143,6 @@ public class CarController : MonoBehaviour
     {
         bool blocked = PlayerNameInput.IsOpen || IsStateBlocking();
 
-        // Always decay thrust even when blocked so there's no stored-up launch on unpause
         if (!throttleHeld || blocked)
             thrust = Mathf.Max(thrust - ThrustDecay * Time.fixedDeltaTime, 0f);
 
@@ -136,82 +152,136 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        // ── Tire torque (drives wheels through joint) ─────────────────────────
-        float torqueInput = throttleHeld ? -1f : (brakeHeld ? 0.5f : 0f);
-        float tireTorque  = torqueInput * speed * Time.fixedDeltaTime;
-        backTire.AddTorque(tireTorque);
-        frontTire.AddTorque(tireTorque);
+        bool grounded = IsGrounded();
+        float controlScale = grounded ? 1f : AirControlScale;
 
-        // ── Auxiliary thrust force ────────────────────────────────────────────
+        ApplyWheelTorque(controlScale);
+        ApplyThrust(controlScale);
+        ApplyBrake();
+        LimitVelocity();
+        TickNitro();
+        ConsumeFuel();
+        ApplyStuckAssist(grounded);
+    }
+
+    void ApplyWheelTorque(float controlScale)
+    {
+        float torqueInput = throttleHeld ? -1f : (brakeHeld ? 0.5f : 0f);
+        float torqueScale = throttleHeld ? 1f : ReverseTorqueScale;
+        float tireTorque = torqueInput * Mathf.Max(speed, WheelTorque) * torqueScale * controlScale;
+
+        backTire.AddTorque(tireTorque, ForceMode2D.Force);
+        frontTire.AddTorque(tireTorque, ForceMode2D.Force);
+    }
+
+    void ApplyThrust(float controlScale)
+    {
         if (throttleHeld)
             thrust = Mathf.Min(thrust + ThrustAccel * Time.fixedDeltaTime, ThrustMax);
 
-        float thrustMultiplier = IsNitroActive ? NitroMultiplier : 1f;
         if (thrust > 0f)
         {
             if (thrustingEffect != null) thrustingEffect.SetActive(true);
-            carRigidbody.AddRelativeForce(Vector2.right * thrust * thrustMultiplier);
+            float boost = IsNitroActive ? NitroMultiplier : 1f;
+            carRigidbody.AddRelativeForce(Vector2.right * thrust * boost * controlScale, ForceMode2D.Force);
         }
-        else
+        else if (thrustingEffect != null)
         {
-            if (thrustingEffect != null) thrustingEffect.SetActive(false);
+            thrustingEffect.SetActive(false);
         }
+    }
 
-        // ── Hard velocity cap — prevents runaway acceleration ────────────────
-        float speedCap = IsNitroActive ? MaxCarSpeed * NitroMultiplier : MaxCarSpeed;
-        float vx = carRigidbody.linearVelocity.x;
-        if (vx > speedCap)
-            carRigidbody.linearVelocity = new Vector2(speedCap, carRigidbody.linearVelocity.y);
+    void ApplyBrake()
+    {
+        if (!brakeHeld || throttleHeld) return;
 
-        // ── Brake counter-force ───────────────────────────────────────────────
-        if (brakeHeld && !throttleHeld)
+        Vector2 velocity = carRigidbody.linearVelocity;
+        if (velocity.sqrMagnitude > 0.01f)
+            carRigidbody.AddForce(-velocity.normalized * BrakeForce, ForceMode2D.Force);
+    }
+
+    void LimitVelocity()
+    {
+        Vector2 velocity = carRigidbody.linearVelocity;
+        float forwardCap = IsNitroActive ? MaxNitroSpeed : MaxForwardSpeed;
+        float clampedX = Mathf.Clamp(velocity.x, -MaxReverseSpeed, forwardCap);
+        float clampedY = Mathf.Min(velocity.y, MaxUpwardSpeed);
+
+        if (!Mathf.Approximately(clampedX, velocity.x) || !Mathf.Approximately(clampedY, velocity.y))
+            carRigidbody.linearVelocity = new Vector2(clampedX, clampedY);
+    }
+
+    void TickNitro()
+    {
+        if (!IsNitroActive) return;
+
+        nitroDuration -= Time.fixedDeltaTime;
+        if (nitroDuration <= 0f)
         {
-            Vector2 vel = carRigidbody.linearVelocity;
-            carRigidbody.AddForce(-vel.normalized * BrakeForce * Time.fixedDeltaTime, ForceMode2D.Force);
+            IsNitroActive = false;
+            nitroCooldown = NitroCooldown;
         }
+    }
 
-        // ── Nitro countdown ───────────────────────────────────────────────────
-        if (IsNitroActive)
+    void ConsumeFuel()
+    {
+        if (!throttleHeld) return;
+
+        fuel = Mathf.Max(fuel - fuelConsumption * Time.fixedDeltaTime, 0f);
+        if (fuel <= 0f && !fuelOutStarted)
         {
-            nitroDuration -= Time.fixedDeltaTime;
-            if (nitroDuration <= 0f)
-            {
-                IsNitroActive = false;
-                nitroCooldown = NitroCooldown;
-            }
+            fuelOutStarted = true;
+            fuelOutTimer = FuelOutGrace;
         }
+    }
 
-        // ── Fuel consumption ──────────────────────────────────────────────────
-        if (throttleHeld)
-        {
-            fuel -= fuelConsumption * Time.fixedDeltaTime;
-            fuel  = Mathf.Max(fuel, 0f);
-
-            if (fuel <= 0f && !fuelOutStarted)
-            {
-                fuelOutStarted = true;
-                fuelOutTimer   = FuelOutGrace;
-            }
-        }
-
-        // ── Stuck nudge ───────────────────────────────────────────────────────
-        if (throttleHeld && carRigidbody.linearVelocity.sqrMagnitude < StuckSpeedSq)
+    void ApplyStuckAssist(bool grounded)
+    {
+        if (grounded && throttleHeld && Mathf.Abs(carRigidbody.linearVelocity.x) < StuckSpeed)
         {
             stuckTimer += Time.fixedDeltaTime;
             if (stuckTimer >= StuckThreshold)
             {
-                carRigidbody.AddForce(Vector2.up * 4f, ForceMode2D.Impulse);
-                backTire.AddForce(Vector2.up * 1.5f, ForceMode2D.Impulse);
-                frontTire.AddForce(Vector2.up * 1.5f, ForceMode2D.Impulse);
+                Vector2 forward = carRigidbody.transform.right;
+                carRigidbody.AddForce(forward * StuckAssistImpulse + Vector2.up * 0.25f, ForceMode2D.Impulse);
+                backTire.AddTorque(-WheelTorque * 0.4f, ForceMode2D.Impulse);
+                frontTire.AddTorque(-WheelTorque * 0.4f, ForceMode2D.Impulse);
                 stuckTimer = 0f;
             }
         }
-        else stuckTimer = 0f;
+        else
+        {
+            stuckTimer = 0f;
+        }
+    }
+
+    bool IsGrounded()
+    {
+        return IsTireGrounded(backTireCollider) || IsTireGrounded(frontTireCollider);
+    }
+
+    bool IsTireGrounded(Collider2D tireCollider)
+    {
+        if (tireCollider == null) return false;
+
+        Bounds bounds = tireCollider.bounds;
+        float radius = Mathf.Max(bounds.extents.x, bounds.extents.y) + 0.08f;
+        int count = Physics2D.OverlapCircleNonAlloc(bounds.center, radius, groundHits);
+
+        for (int i = 0; i < count; i++)
+        {
+            Collider2D hit = groundHits[i];
+            if (hit != null && hit != tireCollider && hit.CompareTag("Ground"))
+                return true;
+        }
+
+        return false;
     }
 
     public void ActivateNitro()
     {
         if (nitroCharges <= 0 || IsNitroActive) return;
+
         nitroCharges--;
         IsNitroActive = true;
         nitroDuration = NitroDuration;
@@ -226,41 +296,40 @@ public class CarController : MonoBehaviour
     public void CancelFuelOutTimer()
     {
         fuelOutStarted = false;
-        fuelOutTimer   = 0f;
+        fuelOutTimer = 0f;
     }
 
     public void RespawnAt(Vector2 worldPos)
     {
-        // Reset fuel
-        fuel           = 0.5f;
+        fuel = 0.5f;
         fuelOutStarted = false;
-        fuelOutTimer   = 0f;
-        thrust         = 0f;
-        IsNitroActive  = false;
-        nitroDuration  = 0f;
-        stuckTimer     = 0f;
+        fuelOutTimer = 0f;
+        thrust = 0f;
+        IsNitroActive = false;
+        nitroDuration = 0f;
+        stuckTimer = 0f;
 
-        // Teleport all rigidbodies (must happen in same frame before physics resolves)
         Vector2 upOffset = Vector2.up * 1.5f;
         carRigidbody.position = worldPos + upOffset;
-        backTire.position     = worldPos + upOffset + backTireOffset;
-        frontTire.position    = worldPos + upOffset + frontTireOffset;
+        backTire.position = worldPos + upOffset + backTireOffset;
+        frontTire.position = worldPos + upOffset + frontTireOffset;
 
-        // Zero all motion
-        carRigidbody.linearVelocity  = Vector2.zero;
-        backTire.linearVelocity      = Vector2.zero;
-        frontTire.linearVelocity     = Vector2.zero;
+        carRigidbody.linearVelocity = Vector2.zero;
+        backTire.linearVelocity = Vector2.zero;
+        frontTire.linearVelocity = Vector2.zero;
         carRigidbody.angularVelocity = 0f;
-        backTire.angularVelocity     = 0f;
-        frontTire.angularVelocity    = 0f;
+        backTire.angularVelocity = 0f;
+        frontTire.angularVelocity = 0f;
 
-        // Stand upright
         carRigidbody.rotation = 0f;
+        backTire.rotation = 0f;
+        frontTire.rotation = 0f;
     }
 
     private bool IsStateBlocking()
     {
         if (GameStateManager.Instance == null) return false;
+
         return GameStateManager.Instance.IsGameOver
             || GameStateManager.Instance.IsWin
             || GameStateManager.Instance.IsLevelPaused
