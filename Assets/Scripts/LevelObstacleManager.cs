@@ -51,13 +51,13 @@ public class LevelObstacleManager : MonoBehaviour
     {
         yield return null;
 
-        Rock(sx + 28f,  2.0f, 2.2f);
-        Boulder(sx + 55f,  20f, 1.6f, -2f);
-        Rock(sx + 82f,  2.5f, 3.0f);           // tall rock — need speed to clear
-        Boulder(sx + 108f, 18f, 1.8f, -1.8f);
-        Barrier(sx + 138f, 2f,  5.2f, 1.3f);   // faster barrier
-        Rock(sx + 162f, 2.5f, 2.8f);
-        Boulder(sx + 185f, 20f, 2.0f, -2.5f);  // big boulder near finish
+        Rock(sx + 42f,  0.85f, 1.8f);
+        Boulder(sx + 78f,  16f, 1.1f, -1.0f);
+        Rock(sx + 128f, 1.05f, 2.2f);
+        FuelCan(sx + 108f, 3.5f, 0.3f);
+        Barrier(sx + 168f, 3.0f, 2.3f, 0.8f);
+        FuelCan(sx + 200f, 3.9f, 0.35f);
+        Boulder(sx + 232f, 16f, 1.25f, -1.2f);
     }
 
     // Level 4 — 9 obstacles: brutal. Spike kill-zones + boulder combos
@@ -65,15 +65,15 @@ public class LevelObstacleManager : MonoBehaviour
     {
         yield return null;
 
-        Boulder(sx + 22f,  22f, 2.0f, -2f);
-        Rock(sx + 42f,    2.5f, 2.5f);
-        Spikes(sx + 65f,  0f,   2.5f, 1.2f);   // first spike zone — instant death
-        Boulder(sx + 85f,  22f, 2.2f, -3f);    // heavy, fast-dropping
-        Rock(sx + 105f,   2.5f, 3.5f);          // very tall blocker
-        Barrier(sx + 128f, 2f,  6.0f, 1.8f);   // fast, tall barrier
-        Boulder(sx + 152f, 22f, 2.0f, -2.5f);
-        Spikes(sx + 170f,  0f,  2.5f, 1.2f);   // second spike zone
-        Rock(sx + 185f,   2.5f, 3.0f);
+        Boulder(sx + 48f,  17f, 1.2f, -1.2f);
+        Rock(sx + 84f,    1.0f, 2.1f);
+        Spikes(sx + 122f, 0f,   1.6f, 0.8f);
+        FuelCan(sx + 150f, 3.9f, 0.3f);
+        Boulder(sx + 182f, 17f, 1.35f, -1.4f);
+        Barrier(sx + 224f, 3.2f, 2.6f, 1.0f);
+        Rock(sx + 262f,   1.1f, 2.3f);
+        Spikes(sx + 304f, 0f,   1.8f, 0.85f);
+        Boulder(sx + 346f, 18f, 1.4f, -1.5f);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -91,7 +91,8 @@ public class LevelObstacleManager : MonoBehaviour
         go.transform.localScale = new Vector3(width, height, 1f);
 
         // Physics — no Rigidbody2D → static collider
-        var col = go.AddComponent<BoxCollider2D>();
+        var col = go.AddComponent<CircleCollider2D>();
+        col.radius = 0.5f;
         col.sharedMaterial = HardMat();
 
         // Main rock body
@@ -127,9 +128,9 @@ public class LevelObstacleManager : MonoBehaviour
         go.transform.localScale = Vector3.one * radius * 2f;
 
         var rb = go.AddComponent<Rigidbody2D>();
-        rb.mass           = 35f;
-        rb.linearDamping  = 0.4f;
-        rb.angularDamping = 0.25f;
+        rb.mass           = 18f;
+        rb.linearDamping  = 0.9f;
+        rb.angularDamping = 0.6f;
         rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         rb.interpolation  = RigidbodyInterpolation2D.Interpolate;
         // Initial nudge toward player
@@ -300,7 +301,7 @@ public class LevelObstacleManager : MonoBehaviour
     static PhysicsMaterial2D HardMat()
     {
         var m = new PhysicsMaterial2D("Hard");
-        m.friction   = 0.5f;
+        m.friction   = 0.18f;
         m.bounciness = 0.0f;
         return m;
     }
@@ -308,8 +309,8 @@ public class LevelObstacleManager : MonoBehaviour
     static PhysicsMaterial2D BoulderMat()
     {
         var m = new PhysicsMaterial2D("Boulder");
-        m.friction   = 0.35f;
-        m.bounciness = 0.15f;
+        m.friction   = 0.22f;
+        m.bounciness = 0.02f;
         return m;
     }
 
