@@ -62,6 +62,7 @@ public class GameStateManager : MonoBehaviour
         EnsureManager<CheckpointManager>();
         EnsureManager<LevelThemeManager>();
         EnsureManager<ParallaxBackground>();
+        EnsureManager<LevelObstacleManager>();
     }
 
     static void EnsureManager<T>() where T : MonoBehaviour

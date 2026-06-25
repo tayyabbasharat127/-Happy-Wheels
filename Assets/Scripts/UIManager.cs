@@ -23,6 +23,7 @@ public class UIManager : MonoBehaviour
 
     // ── Speedometer ────────────────────────────────────────────────────────────
     private Image      speedArc;
+    private Text       speedValueText;   // numeric "XX km/h" inside the arc
 
     // ── Pause button ──────────────────────────────────────────────────────────
     private GameObject pauseButton;
@@ -83,7 +84,7 @@ public class UIManager : MonoBehaviour
         if (GameStateManager.Instance != null)
         {
             displayedScore = GameStateManager.Instance.CompletedTotalScore;
-            lastMilestone  = Mathf.RoundToInt(displayedScore) / 50;
+            lastMilestone  = Mathf.RoundToInt(displayedScore) / 250;
         }
 
         // GameStateManager events
@@ -149,13 +150,13 @@ public class UIManager : MonoBehaviour
         int shown = Mathf.RoundToInt(displayedScore);
         scoreText.text = shown + " m";
 
-        // Milestone punches & popups — only for newly crossed 50m marks
-        int milestone = shown / 50;
+        // Score punch + popup every 250m milestone
+        int milestone = shown / 250;
         if (milestone > lastMilestone)
         {
             lastMilestone = milestone;
-            Tween.PunchScale(this, scoreText.transform, Vector3.one * 0.18f, 0.25f);
-            SpawnScorePopup("+50 m");
+            Tween.PunchScale(this, scoreText.transform, Vector3.one * 0.22f, 0.3f);
+            SpawnScorePopup(milestone * 250 + "m!");
         }
     }
 
@@ -217,15 +218,26 @@ public class UIManager : MonoBehaviour
     {
         if (speedArc == null) return;
         CarController car = CarController.Instance;
-        float speed = car != null && car.carRigidbody != null
+        float rawSpeed = car != null && car.carRigidbody != null
             ? car.carRigidbody.linearVelocity.magnitude : 0f;
+
+        // Convert physics units/s to display km/h (feels realistic in this game's scale)
+        float kmh = rawSpeed * 3.6f;
         speedArc.fillAmount = Mathf.Lerp(speedArc.fillAmount,
-            Mathf.Clamp01(speed / 22f), Time.unscaledDeltaTime * 8f);
-        // Color: green → yellow → red
+            Mathf.Clamp01(rawSpeed / 22f), Time.unscaledDeltaTime * 8f);
+
+        // Arc color: green -> yellow -> red with speed
         float t = speedArc.fillAmount;
         speedArc.color = t < 0.5f
             ? Color.Lerp(FuelGood, FuelMid, t * 2f)
             : Color.Lerp(FuelMid,  FuelLow,  (t - 0.5f) * 2f);
+
+        // Live numeric display inside arc
+        if (speedValueText != null)
+        {
+            speedValueText.text  = Mathf.RoundToInt(kmh).ToString();
+            speedValueText.color = speedArc.color;
+        }
     }
 
     // ── Lives ─────────────────────────────────────────────────────────────────
@@ -503,6 +515,12 @@ public class UIManager : MonoBehaviour
         speedArc.fillMethod = Image.FillMethod.Radial360;
         speedArc.fillAmount = 0f;
         speedArc.fillOrigin = 2;
+
+        // Numeric speed in centre of arc (big number)
+        speedValueText = AddLabel(root, "0", 28, FuelGood, new Vector2(0f, -2f), new Vector2(90f, 36f));
+        speedValueText.fontStyle = FontStyle.Bold;
+        // "km/h" unit below number
+        AddLabel(root, "km/h", 11, new Color(0.60f, 0.60f, 0.65f), new Vector2(0f, -26f), new Vector2(90f, 18f));
     }
 
     void BuildPauseButton(Canvas c)
