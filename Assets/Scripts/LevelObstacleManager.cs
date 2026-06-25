@@ -20,16 +20,7 @@ public class LevelObstacleManager : MonoBehaviour
     {
         if (GameStateManager.Instance == null || CarController.Instance == null) return;
 
-        int   level  = GameStateManager.Instance.CurrentLevel;
-        float startX = CarController.Instance.carRigidbody.position.x;
-
-        switch (level)
-        {
-            case 2: StartCoroutine(SpawnLevel2(startX)); break;
-            case 3: StartCoroutine(SpawnLevel3(startX)); break;
-            case 4: StartCoroutine(SpawnLevel4(startX)); break;
-            // Level 1: tutorial — no obstacles
-        }
+        // All levels: no obstacle spawning.
     }
 
     // ══════════════════════════════════════════════════════════════════════════

@@ -63,6 +63,7 @@ public class GameStateManager : MonoBehaviour
         EnsureManager<LevelThemeManager>();
         EnsureManager<ParallaxBackground>();
         EnsureManager<LevelObstacleManager>();
+        EnsureManager<TerrainDifficultyManager>();
     }
 
     static void EnsureManager<T>() where T : MonoBehaviour
@@ -141,7 +142,7 @@ public class GameStateManager : MonoBehaviour
     // Called by HeadScript, DetectFlip, fuel-out — goes through life system
     public void TriggerDeath()
     {
-        if (IsGameOver || IsWin || IsRespawning) return;
+        if (IsGameOver || IsWin || IsRespawning || IsLevelPaused || IsPaused || levelCompleted) return;
 
         if (LifeManager.Instance != null)
             LifeManager.Instance.LoseLife();

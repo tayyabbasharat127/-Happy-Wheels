@@ -34,6 +34,15 @@ public class CarController : MonoBehaviour
     private Collider2D frontTireCollider;
     private WheelJoint2D backWheelJoint;
     private WheelJoint2D frontWheelJoint;
+    private RigidbodyConstraints2D carOriginalConstraints;
+    private RigidbodyConstraints2D backTireOriginalConstraints;
+    private RigidbodyConstraints2D frontTireOriginalConstraints;
+    private Rigidbody2D[] attachedBodies = new Rigidbody2D[0];
+    private Vector2[] attachedBodyOffsets = new Vector2[0];
+    private float[] attachedBodyAngles = new float[0];
+    private RigidbodyConstraints2D[] attachedBodyConstraints = new RigidbodyConstraints2D[0];
+    private bool savedOriginalConstraints;
+    private bool respawnFrozen;
     private readonly Collider2D[] groundHits = new Collider2D[8];
 
     private const float StuckThreshold = 0.75f;
@@ -51,15 +60,19 @@ public class CarController : MonoBehaviour
     private const float ReverseAssistForce = 70f;
     private const float MaxForwardSpeed = 20f;
     private const float MaxReverseSpeed = 10f;
-    private const float MaxNitroSpeed = 28f;
+    private const float MaxNitroSpeed = 42f;
     private const float MaxUpwardSpeed = 9f;
+    private const float MaxNitroUpwardSpeed = 28f;
     private const float TractionDamping = 0.85f;
     private const float UprightTorque = 18f;
     private const float MaxStableAngularSpeed = 130f;
     private const float FuelOutGrace = 3f;
     private const float NitroDuration = 1.5f;
     private const float NitroCooldown = 2f;
-    private const float NitroMultiplier = 1.75f;
+    private const float NitroMultiplier = 2.6f;
+    private const float NitroLaunchForwardImpulse = 34f;
+    private const float NitroLaunchUpImpulse = 24f;
+    private const float NitroWheelImpulseScale = 0.7f;
     private const float WheelSnapDistance = 0.7f;
 
     void Awake()
@@ -79,6 +92,7 @@ public class CarController : MonoBehaviour
         frontTireCollider = frontTire.GetComponent<Collider2D>();
         backWheelJoint = backTire.GetComponent<WheelJoint2D>();
         frontWheelJoint = frontTire.GetComponent<WheelJoint2D>();
+        CacheAttachedBodies();
 
         DetachWheelTransform(backTire);
         DetachWheelTransform(frontTire);
@@ -146,6 +160,39 @@ public class CarController : MonoBehaviour
         float biggest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y));
         if (biggest > maxAxis * 1.1f)
             tire.transform.localScale = scale * (maxAxis / biggest);
+    }
+
+    void CacheAttachedBodies()
+    {
+        if (carRigidbody == null) return;
+
+        Rigidbody2D[] allBodies = carRigidbody.GetComponentsInChildren<Rigidbody2D>(true);
+        int count = 0;
+        for (int i = 0; i < allBodies.Length; i++)
+        {
+            Rigidbody2D body = allBodies[i];
+            if (body != null && body != carRigidbody && body != backTire && body != frontTire)
+                count++;
+        }
+
+        attachedBodies = new Rigidbody2D[count];
+        attachedBodyOffsets = new Vector2[count];
+        attachedBodyAngles = new float[count];
+        attachedBodyConstraints = new RigidbodyConstraints2D[count];
+
+        int index = 0;
+        for (int i = 0; i < allBodies.Length; i++)
+        {
+            Rigidbody2D body = allBodies[i];
+            if (body == null || body == carRigidbody || body == backTire || body == frontTire)
+                continue;
+
+            attachedBodies[index] = body;
+            attachedBodyOffsets[index] = carRigidbody.transform.InverseTransformPoint(body.position);
+            attachedBodyAngles[index] = Mathf.DeltaAngle(carRigidbody.rotation, body.rotation);
+            attachedBodyConstraints[index] = body.constraints;
+            index++;
+        }
     }
 
     void Update()
@@ -300,8 +347,9 @@ public class CarController : MonoBehaviour
     {
         Vector2 velocity = carRigidbody.linearVelocity;
         float forwardCap = IsNitroActive ? MaxNitroSpeed : MaxForwardSpeed;
+        float upwardCap = IsNitroActive ? MaxNitroUpwardSpeed : MaxUpwardSpeed;
         float clampedX = Mathf.Clamp(velocity.x, -MaxReverseSpeed, forwardCap);
-        float clampedY = Mathf.Min(velocity.y, MaxUpwardSpeed);
+        float clampedY = Mathf.Min(velocity.y, upwardCap);
 
         if (!Mathf.Approximately(clampedX, velocity.x) || !Mathf.Approximately(clampedY, velocity.y))
             carRigidbody.linearVelocity = new Vector2(clampedX, clampedY);
@@ -388,11 +436,12 @@ public class CarController : MonoBehaviour
 
     public void RecoverToCheckpoint()
     {
-        Vector2 pos = CheckpointManager.Instance != null
-            ? CheckpointManager.Instance.LastCheckpointPosition
-            : carRigidbody.position;
+        Vector2 pos = carRigidbody.position;
+        float angle = 0f;
+        if (CheckpointManager.Instance != null)
+            CheckpointManager.Instance.TryGetSafeRespawn(out pos, out angle);
 
-        RespawnAt(pos);
+        RespawnAt(pos, angle, false);
     }
 
     bool IsGrounded()
@@ -425,7 +474,21 @@ public class CarController : MonoBehaviour
         nitroCharges--;
         IsNitroActive = true;
         nitroDuration = NitroDuration;
+        ApplyNitroLaunchImpulse();
         AudioManager.Instance?.PlayNitroActivate();
+    }
+
+    void ApplyNitroLaunchImpulse()
+    {
+        if (carRigidbody == null) return;
+
+        Vector2 launch = (Vector2)carRigidbody.transform.right * NitroLaunchForwardImpulse
+                       + Vector2.up * NitroLaunchUpImpulse;
+        carRigidbody.AddForce(launch, ForceMode2D.Impulse);
+
+        Vector2 wheelLaunch = launch * NitroWheelImpulseScale;
+        if (backTire != null) backTire.AddForce(wheelLaunch, ForceMode2D.Impulse);
+        if (frontTire != null) frontTire.AddForce(wheelLaunch, ForceMode2D.Impulse);
     }
 
     public void AddNitroCharge()
@@ -439,39 +502,174 @@ public class CarController : MonoBehaviour
         fuelOutTimer = 0f;
     }
 
-    public void RespawnAt(Vector2 worldPos)
+    public void BeginRespawnFreeze()
     {
-        fuel = 0.5f;
-        fuelOutStarted = false;
-        fuelOutTimer = 0f;
+        StoreOriginalConstraints();
+        respawnFrozen = true;
+
+        ResetControlState();
+        FreezeBody(carRigidbody);
+        FreezeBody(backTire);
+        FreezeBody(frontTire);
+        for (int i = 0; i < attachedBodies.Length; i++)
+            FreezeBody(attachedBodies[i]);
+    }
+
+    public void EndRespawnFreeze()
+    {
+        RestoreOriginalConstraints();
+        respawnFrozen = false;
+
+        carRigidbody?.WakeUp();
+        backTire?.WakeUp();
+        frontTire?.WakeUp();
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].WakeUp();
+        }
+    }
+
+    void StoreOriginalConstraints()
+    {
+        if (savedOriginalConstraints) return;
+
+        if (carRigidbody != null) carOriginalConstraints = carRigidbody.constraints;
+        if (backTire != null) backTireOriginalConstraints = backTire.constraints;
+        if (frontTire != null) frontTireOriginalConstraints = frontTire.constraints;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodyConstraints[i] = attachedBodies[i].constraints;
+        }
+        savedOriginalConstraints = true;
+    }
+
+    void RestoreOriginalConstraints()
+    {
+        if (!savedOriginalConstraints) return;
+
+        if (carRigidbody != null) carRigidbody.constraints = carOriginalConstraints;
+        if (backTire != null) backTire.constraints = backTireOriginalConstraints;
+        if (frontTire != null) frontTire.constraints = frontTireOriginalConstraints;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].constraints = attachedBodyConstraints[i];
+        }
+    }
+
+    static void FreezeBody(Rigidbody2D body)
+    {
+        if (body == null) return;
+
+        body.linearVelocity = Vector2.zero;
+        body.angularVelocity = 0f;
+        body.Sleep();
+        body.constraints = RigidbodyConstraints2D.FreezeAll;
+    }
+
+    void ResetControlState()
+    {
+        throttleHeld = false;
+        brakeHeld = false;
+        movement = 0f;
         thrust = 0f;
         IsNitroActive = false;
         nitroDuration = 0f;
+        nitroCooldown = 0f;
         stuckTimer = 0f;
         recoveryTimer = 0f;
+        fuelOutStarted = false;
+        fuelOutTimer = 0f;
+        AudioManager.Instance?.SetEngineThrottle(0f);
+        AudioManager.Instance?.SetLowFuelWarning(false);
+        if (thrustingEffect != null) thrustingEffect.SetActive(false);
+    }
 
-        ResetVehiclePose(worldPos + Vector2.up * 1.5f, Vector2.zero);
+    public void RespawnAt(Vector2 worldPos)
+    {
+        RespawnAt(worldPos, 0f, true);
+    }
+
+    public void RespawnAt(Vector2 worldPos, float angle)
+    {
+        RespawnAt(worldPos, angle, true);
+    }
+
+    public void RespawnAt(Vector2 worldPos, float angle, bool keepFrozen)
+    {
+        fuel = 0.5f;
+        ResetControlState();
+        StoreOriginalConstraints();
+
+        ResetVehiclePose(worldPos, angle, Vector2.zero);
+
+        if (keepFrozen || respawnFrozen)
+            BeginRespawnFreeze();
+        else
+            EndRespawnFreeze();
     }
 
     void ResetVehiclePose(Vector2 bodyPosition, Vector2 startVelocity)
     {
+        ResetVehiclePose(bodyPosition, 0f, startVelocity);
+    }
+
+    void ResetVehiclePose(Vector2 bodyPosition, float angle, Vector2 startVelocity)
+    {
+        Quaternion rotation = Quaternion.Euler(0f, 0f, angle);
+        Vector2 backOffset = rotation * backTireOffset;
+        Vector2 frontOffset = rotation * frontTireOffset;
+
+        RestoreOriginalConstraints();
+
         carRigidbody.position = bodyPosition;
-        backTire.position = bodyPosition + backTireOffset;
-        frontTire.position = bodyPosition + frontTireOffset;
+        backTire.position = bodyPosition + backOffset;
+        frontTire.position = bodyPosition + frontOffset;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].position = bodyPosition + (Vector2)(rotation * attachedBodyOffsets[i]);
+        }
 
         carRigidbody.linearVelocity = startVelocity;
         backTire.linearVelocity = startVelocity;
         frontTire.linearVelocity = startVelocity;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].linearVelocity = startVelocity;
+        }
         carRigidbody.angularVelocity = 0f;
         backTire.angularVelocity = 0f;
         frontTire.angularVelocity = 0f;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].angularVelocity = 0f;
+        }
 
-        carRigidbody.rotation = 0f;
-        backTire.rotation = 0f;
-        frontTire.rotation = 0f;
+        carRigidbody.rotation = angle;
+        backTire.rotation = angle;
+        frontTire.rotation = angle;
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].rotation = angle + attachedBodyAngles[i];
+        }
+
+        ConfigureWheelJoint(backWheelJoint, backTireOffset);
+        ConfigureWheelJoint(frontWheelJoint, frontTireOffset);
+
         carRigidbody.WakeUp();
         backTire.WakeUp();
         frontTire.WakeUp();
+        for (int i = 0; i < attachedBodies.Length; i++)
+        {
+            if (attachedBodies[i] != null)
+                attachedBodies[i].WakeUp();
+        }
     }
 
     static void TuneCollision(Rigidbody2D body)

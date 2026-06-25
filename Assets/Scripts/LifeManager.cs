@@ -16,6 +16,8 @@ public class LifeManager : MonoBehaviour
     public event Action      OnRespawnStart;  // UIManager shows overlay
     public event Action      OnRespawnEnd;    // UIManager hides overlay
 
+    private bool respawnRunning;
+
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
@@ -26,13 +28,22 @@ public class LifeManager : MonoBehaviour
 
     public void LoseLife()
     {
+        if (respawnRunning || GameStateManager.Instance == null || GameStateManager.Instance.IsRespawning) return;
         if (lives <= 0) return;
+
+        respawnRunning = true;
+        GameStateManager.Instance.IsRespawning = true;
+
+        CarController.Instance?.BeginRespawnFreeze();
+
         lives--;
         OnLifeChanged?.Invoke(lives);
         AudioManager.Instance?.PlayLifeLost();
 
         if (lives <= 0)
         {
+            respawnRunning = false;
+            GameStateManager.Instance.IsRespawning = false;
             GameStateManager.Instance?.TriggerGameOver();
         }
         else
@@ -43,7 +54,6 @@ public class LifeManager : MonoBehaviour
 
     private IEnumerator RespawnSequence()
     {
-        GameStateManager.Instance.IsRespawning = true;
         AudioManager.Instance?.SetLowFuelWarning(false);
         AudioManager.Instance?.SetEngineThrottle(0f);
 
@@ -52,21 +62,43 @@ public class LifeManager : MonoBehaviour
         // Brief freeze so player reads the "RESPAWNING" overlay
         yield return new WaitForSecondsRealtime(1.6f);
 
-        // Teleport car to last checkpoint (or start) — runs in real time
-        Vector2 respawnPos = CheckpointManager.Instance != null
-            ? CheckpointManager.Instance.LastCheckpointPosition
-            : Vector2.zero;
+        Vector2 respawnPos = Vector2.zero;
+        float respawnAngle = 0f;
+        if (CheckpointManager.Instance != null)
+            CheckpointManager.Instance.TryGetSafeRespawn(out respawnPos, out respawnAngle);
 
         CarController car = CarController.Instance;
-        if (car != null) car.RespawnAt(respawnPos);
+        if (car != null)
+        {
+            car.RespawnAt(respawnPos, respawnAngle, true);
+            ResetCameraToCar(car);
+        }
 
-        // Wait one physics frame for teleport to settle before unfreezing
-        yield return new WaitForSecondsRealtime(0.1f);
+        // Let the new pose settle while the rigidbodies are frozen.
+        yield return new WaitForSecondsRealtime(0.25f);
+
+        if (car != null)
+            car.EndRespawnFreeze();
+
+        yield return new WaitForSecondsRealtime(0.15f);
 
         GameStateManager.Instance.IsRespawning = false;
         GameStateManager.Instance.ResetFlipState();
         AudioManager.Instance?.StartEngine();
 
         OnRespawnEnd?.Invoke();
+        respawnRunning = false;
+    }
+
+    void ResetCameraToCar(CarController car)
+    {
+        if (car == null || car.carRigidbody == null) return;
+
+        Follow[] cameras = FindObjectsOfType<Follow>();
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            if (cameras[i] != null)
+                cameras[i].ResetTarget(car.carRigidbody.transform, true);
+        }
     }
 }

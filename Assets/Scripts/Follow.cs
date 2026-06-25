@@ -31,6 +31,20 @@ public class Follow : MonoBehaviour
         if (cam != null) baseSize = cam.orthographicSize;
     }
 
+    public void ResetTarget(Transform newTarget, bool snap)
+    {
+        target = newTarget;
+        carBody = CarController.Instance != null ? CarController.Instance.carRigidbody : null;
+
+        if (target == null) return;
+
+        if (snap)
+        {
+            transform.position = target.position + offset;
+            if (cam != null) cam.orthographicSize = baseSize;
+        }
+    }
+
     void LateUpdate()
     {
         if (target != null)
