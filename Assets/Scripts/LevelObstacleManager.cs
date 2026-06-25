@@ -36,18 +36,14 @@ public class LevelObstacleManager : MonoBehaviour
     // Level layouts
     // ══════════════════════════════════════════════════════════════════════════
 
-    // Level 2 — 4 obstacles: intro to hazards
+    // Level 2: practice drive with fuel pickups only.
     IEnumerator SpawnLevel2(float sx)
     {
         yield return null; // wait one frame so physics is fully initialised
 
-        Rock(sx + 42f,  1.25f, 1.45f);        // small bump, early
-        FuelCan(sx + 58f,  3.3f, 0.35f);      // recovery after first climb
-        Boulder(sx + 86f,  18f, 1.15f, -1.1f);// readable falling hazard
-        FuelCan(sx + 112f, 4.1f, 0.45f);      // fuel save point before blocker
-        Rock(sx + 132f, 1.45f, 1.65f);        // passable with speed/nitro
-        Barrier(sx + 168f, 2f,  3.2f, 0.75f); // slower, shorter end barrier
-        FuelCan(sx + 188f, 4.2f, 0.35f);      // reward after barrier
+        FuelCan(sx + 58f,  3.3f, 0.35f);
+        FuelCan(sx + 112f, 4.1f, 0.45f);
+        FuelCan(sx + 188f, 4.2f, 0.35f);
     }
 
     // Level 3 — 7 obstacles: harder, tighter spacing
