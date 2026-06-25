@@ -40,14 +40,15 @@ public class CarController : MonoBehaviour
     private const float StuckAssistImpulse = 2.4f;
     private const float MotorSpeedMultiplier = 23f;
     private const float MotorTorque = 9000f;
-    private const float ReverseTorqueScale = 0.55f;
+    private const float ReverseTorqueScale = 0.9f;
     private const float AirControlScale = 0.35f;
     private const float ThrustAccel = 95f;
     private const float ThrustDecay = 120f;
     private const float ThrustMax = 95f;
-    private const float BrakeForce = 85f;
+    private const float BrakeForce = 95f;
+    private const float ReverseAssistForce = 70f;
     private const float MaxForwardSpeed = 17f;
-    private const float MaxReverseSpeed = 7f;
+    private const float MaxReverseSpeed = 10f;
     private const float MaxNitroSpeed = 24f;
     private const float MaxUpwardSpeed = 8.5f;
     private const float FuelOutGrace = 3f;
@@ -153,9 +154,9 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        throttleHeld = Input.GetKey(KeyCode.RightArrow);
-        brakeHeld = Input.GetKey(KeyCode.LeftArrow);
-        movement = throttleHeld ? 1f : (brakeHeld ? -0.3f : 0f);
+        throttleHeld = Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D);
+        brakeHeld = Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A);
+        movement = throttleHeld ? 1f : (brakeHeld ? -1f : 0f);
 
         if (Input.GetKeyDown(KeyCode.Space) && nitroCharges > 0 && nitroCooldown <= 0f && !IsNitroActive)
             ActivateNitro();
@@ -167,7 +168,7 @@ public class CarController : MonoBehaviour
             gasCanImage.fillAmount = Mathf.Clamp01(fuel);
 
         AudioManager.Instance?.SetLowFuelWarning(fuel < 0.2f && !fuelOutStarted && !IsStateBlocking());
-        AudioManager.Instance?.SetEngineThrottle(throttleHeld ? 1f : 0f);
+        AudioManager.Instance?.SetEngineThrottle(throttleHeld || brakeHeld ? 1f : 0f);
 
         if (fuelOutStarted)
         {
@@ -198,7 +199,7 @@ public class CarController : MonoBehaviour
 
         ApplyWheelMotor(controlScale);
         ApplyThrust(controlScale);
-        ApplyBrake();
+        ApplyBrakeOrReverse(controlScale);
         LimitVelocity();
         MaintainWheelAttachment();
         TickNitro();
@@ -247,13 +248,18 @@ public class CarController : MonoBehaviour
         }
     }
 
-    void ApplyBrake()
+    void ApplyBrakeOrReverse(float controlScale)
     {
         if (!brakeHeld || throttleHeld) return;
 
         Vector2 velocity = carRigidbody.linearVelocity;
-        if (velocity.sqrMagnitude > 0.01f)
-            carRigidbody.AddForce(-velocity.normalized * BrakeForce, ForceMode2D.Force);
+        if (velocity.x > 0.5f)
+        {
+            carRigidbody.AddForce(Vector2.left * BrakeForce, ForceMode2D.Force);
+            return;
+        }
+
+        carRigidbody.AddRelativeForce(Vector2.left * ReverseAssistForce * controlScale, ForceMode2D.Force);
     }
 
     void LimitVelocity()
@@ -300,7 +306,7 @@ public class CarController : MonoBehaviour
 
     void ConsumeFuel()
     {
-        if (!throttleHeld) return;
+        if (!throttleHeld && !brakeHeld) return;
 
         fuel = Mathf.Max(fuel - fuelConsumption * Time.fixedDeltaTime, 0f);
         if (fuel <= 0f && !fuelOutStarted)
@@ -312,13 +318,14 @@ public class CarController : MonoBehaviour
 
     void ApplyStuckAssist(bool grounded)
     {
-        if (grounded && throttleHeld && Mathf.Abs(carRigidbody.linearVelocity.x) < StuckSpeed)
+        bool driveHeld = throttleHeld || brakeHeld;
+        if (grounded && driveHeld && Mathf.Abs(carRigidbody.linearVelocity.x) < StuckSpeed)
         {
             stuckTimer += Time.fixedDeltaTime;
             if (stuckTimer >= StuckThreshold)
             {
-                Vector2 forward = carRigidbody.transform.right;
-                carRigidbody.AddForce(forward * StuckAssistImpulse + Vector2.up * 0.25f, ForceMode2D.Impulse);
+                Vector2 direction = throttleHeld ? carRigidbody.transform.right : -carRigidbody.transform.right;
+                carRigidbody.AddForce(direction * StuckAssistImpulse + Vector2.up * 0.25f, ForceMode2D.Impulse);
                 stuckTimer = 0f;
             }
         }

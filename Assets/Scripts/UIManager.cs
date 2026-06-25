@@ -568,7 +568,7 @@ public class UIManager : MonoBehaviour
         pausePanel = MakeRect("PausePanel", c.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         pausePanel.AddComponent<Image>().color = PanelBg;
         AddLabel(pausePanel, "PAUSED", 64, new Color(1f, 0.85f, 0.1f), new Vector2(0f, 92f),  new Vector2(760f, 90f));
-        AddLabel(pausePanel, "→ Accelerate  |  ← Brake  |  SPACE Nitro  |  P Pause", 22, Color.white, new Vector2(0f, 28f), new Vector2(800f, 38f));
+        AddLabel(pausePanel, "Right/D Accelerate  |  Left/A Reverse  |  SPACE Nitro  |  P Pause", 22, Color.white, new Vector2(0f, 28f), new Vector2(800f, 38f));
         AddActionButton(pausePanel, "ResumeBtn", "RESUME",    new Color(0.1f, 0.65f, 0.18f), new Vector2(0f, -54f),  new Vector2(240f, 62f), () => GameStateManager.Instance?.ResumeGame());
         AddActionButton(pausePanel, "MenuBtn",   "MAIN MENU", new Color(0.22f, 0.22f, 0.55f), new Vector2(0f, -134f), new Vector2(240f, 62f), () => GameStateManager.Instance?.GoToMainMenu());
         pausePanel.SetActive(false);
