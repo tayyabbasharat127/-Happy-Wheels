@@ -9,50 +9,65 @@ public class GameStateManager : MonoBehaviour
     public Transform carTransform;
 
     public const float LevelDistance = 1000f;
-    public const int MaxLevel = 4;
+    public const int  MaxLevel       = 4;
 
-    private static int sessionLevel = 1;
+    private static int   sessionLevel = 1;
     private static float sessionTotalScore;
 
-    public float Score { get; private set; }
-    public float LastCompletedLevelScore { get; private set; }
-    public float TotalScore => sessionTotalScore + Score;
-    public float CompletedTotalScore => sessionTotalScore;
-    public int CurrentLevel { get; private set; }
-    public bool IsLevelPaused { get; private set; }
-    public bool IsPaused { get; private set; }
-    public bool IsGameOver { get; private set; }
-    public bool IsWin { get; private set; }
+    public float Score                  { get; private set; }
+    public float LastCompletedLevelScore{ get; private set; }
+    public float TotalScore             => sessionTotalScore + Score;
+    public float CompletedTotalScore    => sessionTotalScore;
+    public int   CurrentLevel           { get; private set; }
+    public bool  IsLevelPaused          { get; private set; }
+    public bool  IsPaused               { get; private set; }
+    public bool  IsGameOver             { get; private set; }
+    public bool  IsWin                  { get; private set; }
+    public bool  IsRespawning           { get; set; }
 
     public event Action<float> OnScoreUpdated;
-    public event Action<int> OnLevelComplete;
-    public event Action<bool> OnPauseChanged;
-    public event Action OnGameOver;
-    public event Action OnWin;
+    public event Action<int>   OnLevelComplete;
+    public event Action<bool>  OnPauseChanged;
+    public event Action        OnGameOver;
+    public event Action        OnWin;
 
     private float upsideDownTimer;
     private float flipCooldown;
-    private bool countedThisFlip;
-    private bool levelCompleted;
+    private bool  countedThisFlip;
+    private bool  levelCompleted;
 
-    private const float UpsideDownAngleMin = 100f;
-    private const float UpsideDownAngleMax = 260f;
-    private const float FlipConfirmSeconds = 0.8f;
+    private const float UpsideDownAngleMin  = 100f;
+    private const float UpsideDownAngleMax  = 260f;
+    private const float FlipConfirmSeconds  = 0.8f;
     private const float FlipCooldownSeconds = 4f;
 
     private float startX;
 
     public static void ResetRunProgress()
     {
-        sessionLevel = 1;
+        sessionLevel      = 1;
         sessionTotalScore = 0f;
     }
 
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
-        Instance = this;
+        Instance     = this;
         CurrentLevel = Mathf.Clamp(sessionLevel, 1, MaxLevel);
+
+        // Auto-create any managers not already in the scene.
+        // Awake() runs before any Start(), so these will be fully initialized
+        // by the time the rest of the scene's Start() methods execute.
+        EnsureManager<LifeManager>();
+        EnsureManager<CheckpointManager>();
+        EnsureManager<LevelThemeManager>();
+        EnsureManager<ParallaxBackground>();
+    }
+
+    static void EnsureManager<T>() where T : MonoBehaviour
+    {
+        if (FindAnyObjectByType<T>(FindObjectsInactive.Include) == null)
+            new GameObject(typeof(T).Name).AddComponent<T>();
     }
 
     void Start()
@@ -63,14 +78,11 @@ public class GameStateManager : MonoBehaviour
         {
             var cc = FindAnyObjectByType<CarController>();
             if (cc != null)
-                carTransform = (cc.carRigidbody != null) ? cc.carRigidbody.transform : cc.transform;
+                carTransform = cc.carRigidbody != null ? cc.carRigidbody.transform : cc.transform;
         }
 
-        if (carTransform != null)
-            startX = carTransform.position.x;
-
-        if (AudioManager.Instance != null)
-            AudioManager.Instance.StartEngine();
+        if (carTransform != null) startX = carTransform.position.x;
+        AudioManager.Instance?.StartEngine();
     }
 
     void Update()
@@ -78,7 +90,8 @@ public class GameStateManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P))
             TogglePause();
 
-        if (IsGameOver || IsWin || IsLevelPaused || IsPaused || levelCompleted || carTransform == null) return;
+        if (IsGameOver || IsWin || IsLevelPaused || IsPaused || levelCompleted || IsRespawning || carTransform == null) return;
+
         UpdateScore();
         DetectFlip();
         CheckLevelProgress();
@@ -98,8 +111,8 @@ public class GameStateManager : MonoBehaviour
     {
         if (flipCooldown > 0f) { flipCooldown -= Time.deltaTime; return; }
 
-        float angle = carTransform.eulerAngles.z;
-        bool upsideDown = angle > UpsideDownAngleMin && angle < UpsideDownAngleMax;
+        float angle      = carTransform.eulerAngles.z;
+        bool  upsideDown = angle > UpsideDownAngleMin && angle < UpsideDownAngleMax;
 
         if (upsideDown)
         {
@@ -107,7 +120,8 @@ public class GameStateManager : MonoBehaviour
             if (upsideDownTimer >= FlipConfirmSeconds && !countedThisFlip)
             {
                 countedThisFlip = true;
-                TriggerGameOver();
+                flipCooldown    = FlipCooldownSeconds;
+                TriggerDeath();
             }
         }
         else
@@ -123,15 +137,26 @@ public class GameStateManager : MonoBehaviour
         CompleteCurrentLevel();
     }
 
+    // Called by HeadScript, DetectFlip, fuel-out — goes through life system
+    public void TriggerDeath()
+    {
+        if (IsGameOver || IsWin || IsRespawning) return;
+
+        if (LifeManager.Instance != null)
+            LifeManager.Instance.LoseLife();
+        else
+            TriggerGameOver();
+    }
+
     public void CompleteCurrentLevel()
     {
         if (levelCompleted) return;
-        levelCompleted = true;
+        levelCompleted          = true;
         LastCompletedLevelScore = Score;
-        sessionTotalScore += Score;
+        sessionTotalScore      += Score;
 
-        if (AudioManager.Instance != null)
-            AudioManager.Instance.SetEngineThrottle(0f);
+        AudioManager.Instance?.SetEngineThrottle(0f);
+        AudioManager.Instance?.SetLowFuelWarning(false);
 
         if (CurrentLevel >= MaxLevel)
         {
@@ -147,7 +172,7 @@ public class GameStateManager : MonoBehaviour
     public void ContinueToNextLevel()
     {
         if (!IsLevelPaused) return;
-        sessionLevel = Mathf.Clamp(CurrentLevel + 1, 1, MaxLevel);
+        sessionLevel  = Mathf.Clamp(CurrentLevel + 1, 1, MaxLevel);
         IsLevelPaused = false;
         Time.timeScale = 1f;
         SceneManager.LoadScene(1);
@@ -156,23 +181,22 @@ public class GameStateManager : MonoBehaviour
     public void TogglePause()
     {
         if (IsPaused) ResumeGame();
-        else PauseGame();
+        else          PauseGame();
     }
 
     public void PauseGame()
     {
-        if (PlayerNameInput.IsOpen || IsGameOver || IsWin || IsLevelPaused || levelCompleted || IsPaused) return;
-        IsPaused = true;
+        if (PlayerNameInput.IsOpen || IsGameOver || IsWin || IsLevelPaused || levelCompleted || IsPaused || IsRespawning) return;
+        IsPaused       = true;
         Time.timeScale = 0f;
-        if (AudioManager.Instance != null)
-            AudioManager.Instance.SetEngineThrottle(0f);
+        AudioManager.Instance?.SetEngineThrottle(0f);
         OnPauseChanged?.Invoke(true);
     }
 
     public void ResumeGame()
     {
         if (!IsPaused) return;
-        IsPaused = false;
+        IsPaused       = false;
         Time.timeScale = 1f;
         OnPauseChanged?.Invoke(false);
     }
@@ -180,42 +204,46 @@ public class GameStateManager : MonoBehaviour
     public void TriggerGameOver()
     {
         if (IsGameOver || IsWin) return;
-        IsPaused = false;
-        IsLevelPaused = false;
+        IsPaused       = false;
+        IsLevelPaused  = false;
+        IsRespawning   = false;
         Time.timeScale = 1f;
-        IsGameOver = true;
-        if (AudioManager.Instance != null)
-        {
-            AudioManager.Instance.StopEngine();
-            AudioManager.Instance.PlayCrash();
-        }
+        IsGameOver     = true;
+        AudioManager.Instance?.SetLowFuelWarning(false);
+        AudioManager.Instance?.StopEngine();
+        AudioManager.Instance?.PlayCrash();
         OnGameOver?.Invoke();
     }
 
     public void TriggerWin()
     {
         if (IsWin || IsGameOver) return;
-        IsPaused = false;
-        IsLevelPaused = false;
+        IsPaused       = false;
+        IsLevelPaused  = false;
+        IsRespawning   = false;
         Time.timeScale = 1f;
-        IsWin = true;
-        if (AudioManager.Instance != null)
-        {
-            AudioManager.Instance.StopEngine();
-            AudioManager.Instance.PlayWin();
-        }
+        IsWin          = true;
+        AudioManager.Instance?.SetLowFuelWarning(false);
+        AudioManager.Instance?.StopEngine();
+        AudioManager.Instance?.PlayWin();
         OnWin?.Invoke();
     }
 
-    public void Restart()
+    // Called by LifeManager after respawn completes — resets flip state so detection restarts clean
+    public void ResetFlipState()
     {
-        Time.timeScale = 1f;
-        SceneManager.LoadScene(1);
+        upsideDownTimer = 0f;
+        countedThisFlip = false;
+        flipCooldown    = 1f; // brief grace after respawn
     }
+
+    // "Try Again" and "Play Again" — both go to level 1 with fresh lives
+    public void Restart() => RestartFromLevelOne();
 
     public void RestartFromLevelOne()
     {
         ResetRunProgress();
+        LifeManager.ResetLives();
         Time.timeScale = 1f;
         SceneManager.LoadScene(1);
     }
@@ -223,6 +251,7 @@ public class GameStateManager : MonoBehaviour
     public void GoToMainMenu()
     {
         ResetRunProgress();
+        LifeManager.ResetLives();
         Time.timeScale = 1f;
         SceneManager.LoadScene(0);
     }
