@@ -31,12 +31,15 @@ public class CarController : MonoBehaviour
     private Vector2 frontTireOffset;
     private Collider2D backTireCollider;
     private Collider2D frontTireCollider;
+    private WheelJoint2D backWheelJoint;
+    private WheelJoint2D frontWheelJoint;
     private readonly Collider2D[] groundHits = new Collider2D[8];
 
     private const float StuckThreshold = 1.2f;
     private const float StuckSpeed = 0.4f;
     private const float StuckAssistImpulse = 2.4f;
-    private const float WheelTorque = 34f;
+    private const float MotorSpeedMultiplier = 23f;
+    private const float MotorTorque = 9000f;
     private const float ReverseTorqueScale = 0.55f;
     private const float AirControlScale = 0.35f;
     private const float ThrustAccel = 75f;
@@ -51,6 +54,7 @@ public class CarController : MonoBehaviour
     private const float NitroDuration = 1.5f;
     private const float NitroCooldown = 2f;
     private const float NitroMultiplier = 1.75f;
+    private const float WheelSnapDistance = 0.7f;
 
     void Awake()
     {
@@ -67,6 +71,13 @@ public class CarController : MonoBehaviour
         frontTireOffset = frontTire.position - carRigidbody.position;
         backTireCollider = backTire.GetComponent<Collider2D>();
         frontTireCollider = frontTire.GetComponent<Collider2D>();
+        backWheelJoint = backTire.GetComponent<WheelJoint2D>();
+        frontWheelJoint = frontTire.GetComponent<WheelJoint2D>();
+
+        DetachWheelTransform(backTire);
+        DetachWheelTransform(frontTire);
+        ConfigureWheelJoint(backWheelJoint, backTireOffset);
+        ConfigureWheelJoint(frontWheelJoint, frontTireOffset);
 
         TuneBody(carRigidbody, 1.0f, 2.4f, 1.8f);
         TuneBody(backTire, 0.45f, 0.25f, 1.6f);
@@ -74,6 +85,36 @@ public class CarController : MonoBehaviour
 
         ClampTireScale(backTire, 1.4f);
         ClampTireScale(frontTire, 1.4f);
+    }
+
+    static void DetachWheelTransform(Rigidbody2D wheel)
+    {
+        if (wheel == null || wheel.transform.parent == null) return;
+
+        wheel.transform.SetParent(null, true);
+    }
+
+    void ConfigureWheelJoint(WheelJoint2D joint, Vector2 connectedAnchor)
+    {
+        if (joint == null) return;
+
+        joint.connectedBody = carRigidbody;
+        joint.autoConfigureConnectedAnchor = false;
+        joint.anchor = Vector2.zero;
+        joint.connectedAnchor = connectedAnchor;
+        joint.enableCollision = false;
+        joint.useMotor = true;
+
+        JointSuspension2D suspension = joint.suspension;
+        suspension.frequency = 12f;
+        suspension.dampingRatio = 0.95f;
+        suspension.angle = 90f;
+        joint.suspension = suspension;
+
+        JointMotor2D motor = joint.motor;
+        motor.maxMotorTorque = MotorTorque;
+        motor.motorSpeed = 0f;
+        joint.motor = motor;
     }
 
     static void TuneBody(Rigidbody2D body, float minLinearDamping, float minAngularDamping, float minGravityScale)
@@ -155,23 +196,35 @@ public class CarController : MonoBehaviour
         bool grounded = IsGrounded();
         float controlScale = grounded ? 1f : AirControlScale;
 
-        ApplyWheelTorque(controlScale);
+        ApplyWheelMotor(controlScale);
         ApplyThrust(controlScale);
         ApplyBrake();
         LimitVelocity();
+        MaintainWheelAttachment();
         TickNitro();
         ConsumeFuel();
         ApplyStuckAssist(grounded);
     }
 
-    void ApplyWheelTorque(float controlScale)
+    void ApplyWheelMotor(float controlScale)
     {
-        float torqueInput = throttleHeld ? -1f : (brakeHeld ? 0.5f : 0f);
-        float torqueScale = throttleHeld ? 1f : ReverseTorqueScale;
-        float tireTorque = torqueInput * Mathf.Max(speed, WheelTorque) * torqueScale * controlScale;
+        float input = throttleHeld ? -1f : (brakeHeld ? 1f : 0f);
+        float reverseScale = brakeHeld && !throttleHeld ? ReverseTorqueScale : 1f;
+        float targetSpeed = input * Mathf.Max(speed, 20f) * MotorSpeedMultiplier * reverseScale * controlScale;
 
-        backTire.AddTorque(tireTorque, ForceMode2D.Force);
-        frontTire.AddTorque(tireTorque, ForceMode2D.Force);
+        SetWheelMotor(backWheelJoint, targetSpeed);
+        SetWheelMotor(frontWheelJoint, targetSpeed);
+    }
+
+    static void SetWheelMotor(WheelJoint2D joint, float targetSpeed)
+    {
+        if (joint == null) return;
+
+        JointMotor2D motor = joint.motor;
+        motor.motorSpeed = targetSpeed;
+        motor.maxMotorTorque = MotorTorque;
+        joint.motor = motor;
+        joint.useMotor = !Mathf.Approximately(targetSpeed, 0f);
     }
 
     void ApplyThrust(float controlScale)
@@ -211,6 +264,25 @@ public class CarController : MonoBehaviour
             carRigidbody.linearVelocity = new Vector2(clampedX, clampedY);
     }
 
+    void MaintainWheelAttachment()
+    {
+        SnapWheelIfSeparated(backTire, backTireOffset);
+        SnapWheelIfSeparated(frontTire, frontTireOffset);
+    }
+
+    void SnapWheelIfSeparated(Rigidbody2D wheel, Vector2 localOffset)
+    {
+        if (wheel == null || carRigidbody == null) return;
+
+        Vector2 expected = carRigidbody.GetRelativePoint(localOffset);
+        Vector2 delta = expected - wheel.position;
+        if (delta.sqrMagnitude <= WheelSnapDistance * WheelSnapDistance) return;
+
+        wheel.position = expected;
+        wheel.linearVelocity = carRigidbody.linearVelocity;
+        wheel.angularVelocity = carRigidbody.angularVelocity;
+    }
+
     void TickNitro()
     {
         if (!IsNitroActive) return;
@@ -244,8 +316,6 @@ public class CarController : MonoBehaviour
             {
                 Vector2 forward = carRigidbody.transform.right;
                 carRigidbody.AddForce(forward * StuckAssistImpulse + Vector2.up * 0.25f, ForceMode2D.Impulse);
-                backTire.AddTorque(-WheelTorque * 0.4f, ForceMode2D.Impulse);
-                frontTire.AddTorque(-WheelTorque * 0.4f, ForceMode2D.Impulse);
                 stuckTimer = 0f;
             }
         }
