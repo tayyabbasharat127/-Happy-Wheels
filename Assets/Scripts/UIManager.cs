@@ -26,7 +26,8 @@ public class UIManager : MonoBehaviour
 
     // ── Pause button ──────────────────────────────────────────────────────────
     private GameObject pauseButton;
-    private Text       pauseButtonText;
+    private Text       pauseButtonText;      // ">" shown when paused (resume indicator)
+    private GameObject pauseIconBars;        // || bars shown when game is running
 
     // ── Panels ─────────────────────────────────────────────────────────────────
     private GameObject pausePanel;
@@ -76,6 +77,14 @@ public class UIManager : MonoBehaviour
 
         if (FindAnyObjectByType<PlayerNameInput>() == null)
             new GameObject("PlayerNameInput").AddComponent<PlayerNameInput>();
+
+        // Seed score display from previously completed levels so Level 2/3/4
+        // don't animate up from 0 — they start from the accumulated total.
+        if (GameStateManager.Instance != null)
+        {
+            displayedScore = GameStateManager.Instance.CompletedTotalScore;
+            lastMilestone  = Mathf.RoundToInt(displayedScore) / 50;
+        }
 
         // GameStateManager events
         if (GameStateManager.Instance != null)
@@ -133,17 +142,20 @@ public class UIManager : MonoBehaviour
     void UpdateScoreDisplay()
     {
         if (scoreText == null || GameStateManager.Instance.IsGameOver || GameStateManager.Instance.IsWin) return;
-        float target = GameStateManager.Instance.Score;
+
+        // TotalScore = completed levels + current level progress
+        float target = GameStateManager.Instance.TotalScore;
         displayedScore = Mathf.Lerp(displayedScore, target, Time.unscaledDeltaTime * 8f);
         int shown = Mathf.RoundToInt(displayedScore);
         scoreText.text = shown + " m";
 
+        // Milestone punches & popups — only for newly crossed 50m marks
         int milestone = shown / 50;
         if (milestone > lastMilestone)
         {
             lastMilestone = milestone;
             Tween.PunchScale(this, scoreText.transform, Vector3.one * 0.18f, 0.25f);
-            SpawnScorePopup("+" + (milestone == 1 ? 50 : 50) + " m");
+            SpawnScorePopup("+50 m");
         }
     }
 
@@ -362,8 +374,11 @@ public class UIManager : MonoBehaviour
             && !GameStateManager.Instance.IsLevelPaused
             && !GameStateManager.Instance.IsRespawning;
         pauseButton.SetActive(canShow);
-        if (pauseButtonText != null)
-            pauseButtonText.text = GameStateManager.Instance.IsPaused ? "RESUME" : "PAUSE";
+
+        // Swap icon: || bars when running, ">" when paused
+        bool paused = GameStateManager.Instance.IsPaused;
+        if (pauseIconBars   != null) pauseIconBars.SetActive(!paused);
+        if (pauseButtonText != null) pauseButtonText.gameObject.SetActive(paused);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -492,14 +507,41 @@ public class UIManager : MonoBehaviour
 
     void BuildPauseButton(Canvas c)
     {
+        // Square button (56×56) — top right corner
         pauseButton = MakeRect("PauseBtn", c.transform,
-            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-78f, -54f), new Vector2(112f, 56f));
-        pauseButton.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-44f, -44f), new Vector2(56f, 56f));
+        var bg = pauseButton.AddComponent<Image>();
+        bg.color = new Color(0f, 0f, 0f, 0.60f);
+
         var btn = pauseButton.AddComponent<Button>();
-        btn.targetGraphic = pauseButton.GetComponent<Image>();
+        btn.targetGraphic = bg;
+        var colors = btn.colors;
+        colors.highlightedColor = new Color(0.25f, 0.25f, 0.25f, 0.85f);
+        colors.pressedColor     = new Color(0.15f, 0.15f, 0.15f, 0.95f);
+        btn.colors = colors;
         btn.onClick.AddListener(() => GameStateManager.Instance?.TogglePause());
         var nav = btn.navigation; nav.mode = Navigation.Mode.None; btn.navigation = nav;
-        pauseButtonText = AddLabel(pauseButton, "PAUSE", 22, Color.white, Vector2.zero, new Vector2(112f, 56f));
+
+        // ── Pause icon: two white vertical bars (||) ──────────────────────────
+        pauseIconBars = new GameObject("PauseIcon");
+        pauseIconBars.transform.SetParent(pauseButton.transform, false);
+        var rt = pauseIconBars.AddComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = Vector2.zero;
+
+        var barL = MakeRect("BarL", pauseIconBars.transform,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-8f, 0f), new Vector2(9f, 26f));
+        barL.AddComponent<Image>().color = Color.white;
+
+        var barR = MakeRect("BarR", pauseIconBars.transform,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(8f, 0f), new Vector2(9f, 26f));
+        barR.AddComponent<Image>().color = Color.white;
+
+        // ── Resume icon: ">" text (ASCII-safe, universally readable) ──────────
+        pauseButtonText = AddLabel(pauseButton, ">", 34, Color.white, Vector2.zero, new Vector2(56f, 56f));
+        pauseButtonText.gameObject.SetActive(false);  // hidden until paused
+
         pauseButton.SetActive(false);
     }
 
