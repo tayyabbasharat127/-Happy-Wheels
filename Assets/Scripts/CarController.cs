@@ -42,9 +42,9 @@ public class CarController : MonoBehaviour
     private const float MotorTorque = 9000f;
     private const float ReverseTorqueScale = 0.55f;
     private const float AirControlScale = 0.35f;
-    private const float ThrustAccel = 75f;
+    private const float ThrustAccel = 95f;
     private const float ThrustDecay = 120f;
-    private const float ThrustMax = 72f;
+    private const float ThrustMax = 95f;
     private const float BrakeForce = 85f;
     private const float MaxForwardSpeed = 17f;
     private const float MaxReverseSpeed = 7f;
@@ -208,7 +208,7 @@ public class CarController : MonoBehaviour
 
     void ApplyWheelMotor(float controlScale)
     {
-        float input = throttleHeld ? -1f : (brakeHeld ? 1f : 0f);
+        float input = throttleHeld ? 1f : (brakeHeld ? -1f : 0f);
         float reverseScale = brakeHeld && !throttleHeld ? ReverseTorqueScale : 1f;
         float targetSpeed = input * Mathf.Max(speed, 20f) * MotorSpeedMultiplier * reverseScale * controlScale;
 
@@ -237,6 +237,9 @@ public class CarController : MonoBehaviour
             if (thrustingEffect != null) thrustingEffect.SetActive(true);
             float boost = IsNitroActive ? NitroMultiplier : 1f;
             carRigidbody.AddRelativeForce(Vector2.right * thrust * boost * controlScale, ForceMode2D.Force);
+
+            if (controlScale >= 1f)
+                carRigidbody.AddForce(Vector2.right * thrust * 0.55f * boost, ForceMode2D.Force);
         }
         else if (thrustingEffect != null)
         {
