@@ -41,10 +41,13 @@ public class LevelObstacleManager : MonoBehaviour
     {
         yield return null; // wait one frame so physics is fully initialised
 
-        Rock(sx + 42f,  2.2f, 2.0f);          // small rock, early
-        Boulder(sx + 82f,  18f, 1.4f, -1.5f); // medium boulder, drops from height
-        Rock(sx + 128f, 2.5f, 2.5f);          // medium rock mid-level
-        Barrier(sx + 165f, 2f,  4.5f, 0.9f);  // slow moving red barrier near end
+        Rock(sx + 42f,  1.25f, 1.45f);        // small bump, early
+        FuelCan(sx + 58f,  3.3f, 0.35f);      // recovery after first climb
+        Boulder(sx + 86f,  18f, 1.15f, -1.1f);// readable falling hazard
+        FuelCan(sx + 112f, 4.1f, 0.45f);      // fuel save point before blocker
+        Rock(sx + 132f, 1.45f, 1.65f);        // passable with speed/nitro
+        Barrier(sx + 168f, 2f,  3.2f, 0.75f); // slower, shorter end barrier
+        FuelCan(sx + 188f, 4.2f, 0.35f);      // reward after barrier
     }
 
     // Level 3 — 7 obstacles: harder, tighter spacing
@@ -255,6 +258,39 @@ public class LevelObstacleManager : MonoBehaviour
     // ══════════════════════════════════════════════════════════════════════════
     // Helpers
     // ══════════════════════════════════════════════════════════════════════════
+
+    void FuelCan(float x, float y, float amount)
+    {
+        var go = new GameObject("FuelSavePoint");
+        go.transform.position = new Vector3(x, y, -0.05f);
+        go.transform.localScale = new Vector3(0.9f, 1.15f, 1f);
+
+        var trigger = go.AddComponent<CircleCollider2D>();
+        trigger.isTrigger = true;
+        trigger.radius = 1.15f;
+
+        var fuel = go.AddComponent<AddFuel>();
+        fuel.fuelAmount = amount;
+
+        var body = go.AddComponent<SpriteRenderer>();
+        body.sprite = BoxSprite();
+        body.color = new Color(0.85f, 0.05f, 0.03f);
+        body.sortingOrder = 6;
+
+        var cap = Child(go.transform, "Cap", new Vector3(0.28f, 0.48f, -0.05f),
+            new Vector3(0.32f, 0.18f, 1f));
+        var capSr = cap.AddComponent<SpriteRenderer>();
+        capSr.sprite = BoxSprite();
+        capSr.color = new Color(0.08f, 0.08f, 0.08f);
+        capSr.sortingOrder = 7;
+
+        var stripe = Child(go.transform, "FuelStripe", new Vector3(0f, -0.05f, -0.08f),
+            new Vector3(0.18f, 0.7f, 1f));
+        var stripeSr = stripe.AddComponent<SpriteRenderer>();
+        stripeSr.sprite = BoxSprite();
+        stripeSr.color = new Color(1f, 0.82f, 0.25f);
+        stripeSr.sortingOrder = 7;
+    }
 
     static GameObject Child(Transform parent, string name, Vector3 localPos, Vector3 localScale)
     {

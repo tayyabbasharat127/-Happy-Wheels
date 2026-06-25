@@ -16,6 +16,7 @@ public class AddFuel : MonoBehaviour
     {
         if (carController == null) carController = FindAnyObjectByType<CarController>();
         if (carController == null) return;
+        if (!IsPlayerVehicle(collision)) return;
 
         carController.fuel = Mathf.Min(carController.fuel + fuelAmount, 1f);
         carController.CancelFuelOutTimer();
@@ -24,5 +25,14 @@ public class AddFuel : MonoBehaviour
             AudioManager.Instance.PlayFuelPickup();
 
         Destroy(gameObject);
+    }
+
+    bool IsPlayerVehicle(Collider2D collision)
+    {
+        Rigidbody2D rb = collision.attachedRigidbody;
+        return rb != null
+            && (rb == carController.carRigidbody
+                || rb == carController.backTire
+                || rb == carController.frontTire);
     }
 }
